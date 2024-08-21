@@ -35,10 +35,10 @@ class MetadataRepository(Repository):
     # TODO: define per-role expiry
     expiry_period = timedelta(days=1)
 
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: Path) -> None:
 
         self.signer_cache: Dict[str, List[Signer]] = defaultdict(list)
-        self._path = Path(path)
+        self._path = path
 
         # current snapshot version cache
         self._snapshot_info = MetaFile(1)
@@ -72,8 +72,7 @@ class MetadataRepository(Repository):
 
         fname = f"{role}.json"
 
-        # Default `do_snapshot` and `do_timestamp` implementations need
-        # the current metadata versions
+        # Needed for default `do_snapshot` and `do_timestamp` implementations
         if role == "snapshot":
             self._snapshot_info.version = md.signed.version
         elif role != "timestamp":  # role in [root, targets, <delegated targets>]
@@ -84,7 +83,7 @@ class MetadataRepository(Repository):
         if role == "root":
             md.to_file(self.metadata_path / f"{md.signed.version}.{fname}")
 
-    def create_repository(self):
+    def create(self):
         """Create new metadata repository.
 
         1. Create metadata subdir (fail, if exists)
@@ -102,9 +101,9 @@ class MetadataRepository(Repository):
             for signer in self.signer_cache[role]:
                 root.add_key(signer.public_key, role)
 
-        for signed in [root, Timestamp(), Snapshot(), Targets()]:
-            signed.version = 0  # bumps to initial valid verison 1 in `close`
-            self.close(signed.type, Metadata(signed))
+        sn = Snapshot()
+        sn.meta["root.json"] = MetaFile(1)  # `targets.json` included per default
 
-        self.do_snapshot()
-        self.do_timestamp()
+        for signed in [root, Timestamp(), sn, Targets()]:
+            signed.version = 0  # `close` will bump to initial valid verison 1
+            self.close(signed.type, Metadata(signed))
