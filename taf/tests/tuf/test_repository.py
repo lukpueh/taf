@@ -1,9 +1,11 @@
-import pytest
 from pathlib import Path
+from shutil import copytree
+import pytest
 from taf.tuf.repository import MetadataRepository
 from securesystemslib.signer import CryptoSigner, SSlibKey
 
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
+from securesystemslib.exceptions import StorageError
 
 
 # TODO: de-duplicate with conftest.py constants
@@ -23,6 +25,31 @@ def test_signer() -> CryptoSigner:
 
 
 class TestMetadataRepository:
+    def test_open(self):
+        repo = MetadataRepository(
+            TEST_DATA_PATH
+            / "repos"
+            / "test-repository-tool"
+            / "test-delegated-roles-pkcs1v15"
+            / "taf"
+        )
+
+        # assert existing role metadata can be opened
+        for role in [
+            "root",
+            "timestamp",
+            "snapshot",
+            "targets",
+            "delegated_role1",
+            "delegated_role2",
+            "inner_delegated_role",
+        ]:
+            assert repo.open(role)
+
+        # assert non-existing role metadata cannot
+        with pytest.raises(StorageError):
+            repo.open("foo")
+
     def test_create(self, tmp_path: Path, test_signer: CryptoSigner):
         # Create new metadata repository
         repo = MetadataRepository(tmp_path)
@@ -59,8 +86,31 @@ class TestMetadataRepository:
         assert repo.snapshot().meta["targets.json"].version == 1
         assert len(repo.snapshot().meta) == 2
 
-    def test_create__fail_with_existing_repo(self, tmp_path):
-        repo = MetadataRepository(tmp_path)
-        repo.metadata_path.mkdir()
+        # assert repo cannot be created twice
         with pytest.raises(FileExistsError):
             repo.create()
+
+    def test_add_target_files(self, tmp_path, test_signer):
+        """Edit metadata repository.
+
+        If we edit manually, we need to make sure to create a valid snapshot.
+        """
+
+        # copy test metadata
+
+        # write helper to read keys as signers (with legacy keyids)
+
+        # also for existing test metadata
+
+        copytree(
+            TEST_DATA_PATH
+            / "repos"
+            / "test-repository-tool"
+            / "test-delegated-roles-pkcs1v15"
+            / "taf"
+            / "metadata",
+            tmp_path / "metadata",
+        )
+        # repo = MetadataRepository(tmp_path)
+
+        # repo.add_target_files(...)

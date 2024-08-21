@@ -15,6 +15,7 @@ from tuf.api.metadata import (
     Root,
     Snapshot,
     Targets,
+    TargetFile,
     Timestamp,
 )
 from tuf.repository import Repository
@@ -107,3 +108,19 @@ class MetadataRepository(Repository):
         for signed in [root, Timestamp(), sn, Targets()]:
             signed.version = 0  # `close` will bump to initial valid verison 1
             self.close(signed.type, Metadata(signed))
+
+    def add_target_files(self, target_files: List[TargetFile]) -> None:
+        """
+
+        TODO: consider different level of abstraction. This could very well
+        receive a list of paths, and source the TargetFile objects itself (see
+        e.g. TargetFile.from_file). Or, not take an argument at all and just
+        "sync" the files in the "targets" directory with the existing targets
+        metadata.
+        """
+        with self.edit_targets() as targets:
+            for target_file in target_files:
+                targets.targets[target_file.path] = target_file
+
+        self.do_snapshot()
+        self.do_timestamp()
