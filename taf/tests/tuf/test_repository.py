@@ -1,8 +1,9 @@
 from pathlib import Path
-from shutil import copytree
 import pytest
 from taf.tuf.repository import MetadataRepository
+from tuf.api.metadata import TargetFile
 from securesystemslib.signer import CryptoSigner, SSlibKey
+
 
 from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from securesystemslib.exceptions import StorageError
@@ -13,7 +14,7 @@ TEST_DATA_PATH = Path(__file__).parent.parent / "data"
 
 
 @pytest.fixture
-def test_signer() -> CryptoSigner:
+def test_signer():
     """Create signer from some rsa test key."""
     key_path = TEST_DATA_PATH / "keystores" / "keystore" / "root1"
     with open(key_path, "rb") as f:
@@ -22,6 +23,15 @@ def test_signer() -> CryptoSigner:
     priv = load_pem_private_key(private_pem, None)
     pub = SSlibKey.from_crypto(priv.public_key())
     return CryptoSigner(priv, pub)
+
+
+@pytest.fixture
+def test_signers(test_signer):
+    """Dict of signers per role"""
+    signers = {}
+    for role in ["root", "timestamp", "snapshot", "targets"]:
+        signers[role] = [test_signer]
+    return signers
 
 
 class TestMetadataRepository:
@@ -50,11 +60,10 @@ class TestMetadataRepository:
         with pytest.raises(StorageError):
             repo.open("foo")
 
-    def test_create(self, tmp_path: Path, test_signer: CryptoSigner):
+    def test_create(self, tmp_path, test_signer, test_signers):
         # Create new metadata repository
         repo = MetadataRepository(tmp_path)
-        for role in ["root", "timestamp", "snapshot", "targets"]:
-            repo.signer_cache[role] = [test_signer]
+        repo.signer_cache = test_signers
         repo.create()
 
         # assert metadata files were created
@@ -90,27 +99,29 @@ class TestMetadataRepository:
         with pytest.raises(FileExistsError):
             repo.create()
 
-    def test_add_target_files(self, tmp_path, test_signer):
+    def test_add_target_files(self, tmp_path, test_signers):
         """Edit metadata repository.
 
         If we edit manually, we need to make sure to create a valid snapshot.
         """
+        # Create new metadata repository
+        repo = MetadataRepository(tmp_path)
+        repo.signer_cache = test_signers
+        repo.create()
 
-        # copy test metadata
+        target_file = TargetFile.from_data("foo.txt", b"foo", ["sha256", "sha512"])
+        repo.add_target_files([target_file])
 
-        # write helper to read keys as signers (with legacy keyids)
+        # assert target file was adde
+        assert repo.targets().targets[target_file.path] == target_file
 
-        # also for existing test metadata
+        # assert correct versions
+        assert repo.root().version == 1
+        assert repo.timestamp().version == 2
+        assert repo.snapshot().version == 2
+        assert repo.targets().version == 2
 
-        copytree(
-            TEST_DATA_PATH
-            / "repos"
-            / "test-repository-tool"
-            / "test-delegated-roles-pkcs1v15"
-            / "taf"
-            / "metadata",
-            tmp_path / "metadata",
-        )
-        # repo = MetadataRepository(tmp_path)
-
-        # repo.add_target_files(...)
+        # assert correct snapshot and timestamp meta
+        assert repo.timestamp().snapshot_meta.version == 2
+        assert repo.snapshot().meta["root.json"].version == 1
+        assert repo.snapshot().meta["targets.json"].version == 2
