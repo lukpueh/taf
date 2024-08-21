@@ -1,11 +1,10 @@
 from pathlib import Path
 import pytest
 from taf.tuf.repository import MetadataRepository
+from taf.tuf.keys import load_signer_from_file
+
 from tuf.api.metadata import TargetFile
-from securesystemslib.signer import CryptoSigner, SSlibKey
 
-
-from cryptography.hazmat.primitives.serialization import load_pem_private_key
 from securesystemslib.exceptions import StorageError
 
 
@@ -17,12 +16,7 @@ TEST_DATA_PATH = Path(__file__).parent.parent / "data"
 def test_signer():
     """Create signer from some rsa test key."""
     key_path = TEST_DATA_PATH / "keystores" / "keystore" / "root1"
-    with open(key_path, "rb") as f:
-        private_pem = f.read()
-
-    priv = load_pem_private_key(private_pem, None)
-    pub = SSlibKey.from_crypto(priv.public_key())
-    return CryptoSigner(priv, pub)
+    return load_signer_from_file(key_path, None)
 
 
 @pytest.fixture
