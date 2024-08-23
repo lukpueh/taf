@@ -160,13 +160,13 @@ class TestMetadataRepository:
         assert repo.snapshot().meta["root.json"].version == 4
         assert repo.snapshot().meta["targets.json"].version == 1
 
-        # assert add new targets key and version bumps (all)
+        # assert add new targets key and version bumps (all but targets)
         repo.add_keys([new_key], "targets")
         assert new_key.keyid in repo.root().roles["targets"].keyids
         assert repo.root().version == 5
         assert repo.timestamp().version == 5
         assert repo.snapshot().version == 5
-        assert repo.targets().version == 2
+        assert repo.targets().version == 1
         assert repo.timestamp().snapshot_meta.version == 5
         assert repo.snapshot().meta["root.json"].version == 5
-        assert repo.snapshot().meta["targets.json"].version == 2
+        assert repo.snapshot().meta["targets.json"].version == 1
