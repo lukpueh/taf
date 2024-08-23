@@ -1,15 +1,11 @@
-from pathlib import Path
 import pytest
+from securesystemslib.exceptions import StorageError
 from taf.tuf.repository import MetadataRepository
 from taf.tuf.keys import load_signer_from_file
 
 from tuf.api.metadata import TargetFile
 
-from securesystemslib.exceptions import StorageError
-
-
-# TODO: de-duplicate with conftest.py constants
-TEST_DATA_PATH = Path(__file__).parent.parent / "data"
+from taf.tests.tuf import TEST_DATA_PATH
 
 
 @pytest.fixture
@@ -50,7 +46,7 @@ class TestMetadataRepository:
         ]:
             assert repo.open(role)
 
-        # assert non-existing role metadata cannot
+        # assert non-existing role metadata cannot be opened
         with pytest.raises(StorageError):
             repo.open("foo")
 
