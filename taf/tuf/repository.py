@@ -7,7 +7,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List
 
-from securesystemslib.signer import Signer
+from securesystemslib.signer import Signer, Key
 
 from tuf.api.metadata import (
     Metadata,
@@ -27,6 +27,8 @@ METADATA_DIRECTORY_NAME = "metadata"
 
 class MetadataRepository(Repository):
     """TUF metadata repository.
+
+    Currently only support top-level delegation
 
     Attributes:
         signer_cache: All signers available to the repository. Keys are role
@@ -91,6 +93,7 @@ class MetadataRepository(Repository):
         2. Create initial versions of top-level metadata
         3. Perform top-level delegation using keys from signer_cache.
 
+        TODO: Should allow pass keys?
         TODO: Should allow set threshold? Or default to 1? Or len(signers)?
         TODO: Should allow add target files?
 
@@ -109,6 +112,8 @@ class MetadataRepository(Repository):
             signed.version = 0  # `close` will bump to initial valid verison 1
             self.close(signed.type, Metadata(signed))
 
+        # NOTE: No need to call do_snapshot and do_timestamp here
+
     def add_target_files(self, target_files: List[TargetFile]) -> None:
         """
 
@@ -117,10 +122,31 @@ class MetadataRepository(Repository):
         e.g. TargetFile.from_file). Or, not take an argument at all and just
         "sync" the files in the "targets" directory with the existing targets
         metadata.
+
+
         """
         with self.edit_targets() as targets:
             for target_file in target_files:
                 targets.targets[target_file.path] = target_file
 
+        self.do_snapshot()
+        self.do_timestamp()
+
+    def add_keys(self, keys: List[Key], role: str) -> None:
+        """
+        Bumps even if no or no new keys are added
+        NOTE:
+        """
+        with self.edit_root() as root:
+            for key in keys:
+                root.add_key(key, role)
+
+        if role == "targets":
+            with self.edit_targets():
+                pass
+
+        # must do_snapshot change because root changed
+        # if root was not part of snapshot and `role` was `timestamp` we
+        # could skip do_snapshot
         self.do_snapshot()
         self.do_timestamp()
