@@ -6,7 +6,14 @@
 from typing import Optional
 
 from pathlib import Path
-from securesystemslib.signer import SSlibKey, CryptoSigner
+from securesystemslib.signer import (
+    Key,
+    SSlibKey,
+    CryptoSigner,
+    Signer,
+    SecretsHandler,
+    Signature,
+)
 from securesystemslib.formats import encode_canonical
 from securesystemslib.hash import digest
 
@@ -15,6 +22,10 @@ from cryptography.hazmat.primitives.serialization import (
     load_pem_public_key,
 )
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
+
+from ykman.piv import SLOT
+
+from taf.yubikey import _yk_piv_ctrl, sign_piv_rsa_pkcs1v15
 
 
 def _get_legacy_keyid(key: SSlibKey) -> str:
@@ -75,3 +86,36 @@ def load_signer_from_file(path: Path, password: Optional[str]) -> CryptoSigner:
     priv = load_pem_private_key(pem, password)
     pub = priv.public_key()
     return CryptoSigner(priv, _from_crypto(pub))
+
+
+class YkSigner(Signer):
+    def __init__(self, public_key: Key, pin_handler: SecretsHandler):
+
+        self._public_key = public_key
+        self.pin_handler = pin_handler
+
+    @property
+    def public_key(self) -> Key:
+        return self._public_key
+
+    @classmethod
+    def import_(cls) -> SSlibKey:
+        with _yk_piv_ctrl() as (ctrl, _):
+            x509 = ctrl.get_certificate(SLOT.SIGNATURE)
+
+        pub = x509.public_key()
+        return _from_crypto(pub)
+
+    def sign(self, payload: bytes) -> Signature:
+        pin = self.pin_handler()
+        sig = sign_piv_rsa_pkcs1v15(payload, pin, self.public_key.keyval["public"])
+        return Signature(self.public_key.keyid, sig.hex())
+
+    @classmethod
+    def from_priv_key_uri(
+        cls,
+        priv_key_uri: str,
+        public_key: Key,
+        secrets_handler: Optional[SecretsHandler] = None,
+    ) -> "Signer":
+        raise NotImplementedError()
