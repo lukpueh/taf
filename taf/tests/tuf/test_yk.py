@@ -3,11 +3,6 @@
 import os
 import pytest
 
-from asn1crypto.keys import (
-    ECDomainParameters,
-    NamedCurve,
-)
-from cryptography.hazmat.primitives.asymmetric.ec import SECP256R1
 from PyKCS11 import PyKCS11
 
 from securesystemslib.exceptions import UnverifiedSignatureError
@@ -18,44 +13,37 @@ _HSM_KEYID = 1
 _HSM_USER_PIN = "123456"
 
 
-def _generate_key_pair(session, keyid, curve):
-    "Create ecdsa key pair on hsm"
-    params = ECDomainParameters(name="named", value=NamedCurve(curve.name)).dump()
-
+def _generate_key_pair(session, keyid):
+    "Create rsa key pair on hsm"
     public_template = [
         (PyKCS11.CKA_CLASS, PyKCS11.CKO_PUBLIC_KEY),
         (PyKCS11.CKA_PRIVATE, PyKCS11.CK_FALSE),
+        (PyKCS11.CKA_MODULUS_BITS, 0x0400),
+        (PyKCS11.CKA_PUBLIC_EXPONENT, (0x01, 0x00, 0x01)),
         (PyKCS11.CKA_TOKEN, PyKCS11.CK_TRUE),
         (PyKCS11.CKA_ENCRYPT, PyKCS11.CK_FALSE),
         (PyKCS11.CKA_VERIFY, PyKCS11.CK_TRUE),
         (PyKCS11.CKA_WRAP, PyKCS11.CK_FALSE),
-        (PyKCS11.CKA_KEY_TYPE, PyKCS11.CKK_ECDSA),
-        (PyKCS11.CKA_EC_PARAMS, params),
-        (PyKCS11.CKA_LABEL, curve.name),
+        (PyKCS11.CKA_LABEL, str(keyid)),
         (PyKCS11.CKA_ID, (keyid,)),
     ]
     private_template = [
         (PyKCS11.CKA_CLASS, PyKCS11.CKO_PRIVATE_KEY),
-        (PyKCS11.CKA_KEY_TYPE, PyKCS11.CKK_ECDSA),
         (PyKCS11.CKA_TOKEN, PyKCS11.CK_TRUE),
         (PyKCS11.CKA_SENSITIVE, PyKCS11.CK_TRUE),
         (PyKCS11.CKA_DECRYPT, PyKCS11.CK_FALSE),
         (PyKCS11.CKA_SIGN, PyKCS11.CK_TRUE),
         (PyKCS11.CKA_UNWRAP, PyKCS11.CK_FALSE),
-        (PyKCS11.CKA_LABEL, curve.name),
+        (PyKCS11.CKA_LABEL, str(keyid)),
         (PyKCS11.CKA_ID, (keyid,)),
     ]
 
-    session.generateKeyPair(
-        public_template,
-        private_template,
-        mecha=PyKCS11.MechanismECGENERATEKEYPAIR,
-    )
+    session.generateKeyPair(public_template, private_template)
 
 
 @pytest.fixture
 def test_hsm(tmp_path):
-    """Initialize SoftHSM token and generate ecdsa test keys"""
+    """Initialize SoftHSM token and generate test keys"""
     so_pin = "abcd"
     token_label = "Test SoftHSM"
 
@@ -79,8 +67,7 @@ def test_hsm(tmp_path):
 
     session.login(_HSM_USER_PIN)
 
-    # Generate test ecdsa key pairs for curves secp256r1 and secp384r1 on test token
-    _generate_key_pair(session, _HSM_KEYID, SECP256R1)
+    _generate_key_pair(session, _HSM_KEYID)
 
     session.logout()
     session.closeSession()
