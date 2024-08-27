@@ -2,7 +2,9 @@
 # generating repository
 import datetime
 from typing import List, Optional
-from tuf.repository_tool import TARGETS_DIRECTORY_NAME
+
+# from tuf.repository_tool import TARGETS_DIRECTORY_NAME
+TARGETS_DIRECTORY_NAME = "targets"
 
 import attrs
 

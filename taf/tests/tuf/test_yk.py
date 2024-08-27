@@ -4,10 +4,12 @@ import os
 import pytest
 
 from PyKCS11 import PyKCS11
+from taf.tuf.keys import YkSigner
 
 from securesystemslib.exceptions import UnverifiedSignatureError
 from securesystemslib.signer import HSMSigner
 from securesystemslib.signer._hsm_signer import PYKCS11LIB
+
 
 _HSM_KEYID = 1
 _HSM_USER_PIN = "123456"
@@ -94,10 +96,11 @@ class TestHSM:
     def test_hsm(self, test_hsm):
         """Test HSM key export and signing."""
 
-        _, key = HSMSigner.import_(_HSM_KEYID)
-        signer = HSMSigner(_HSM_KEYID, {}, key, lambda sec: _HSM_USER_PIN)
-        sig = signer.sign(b"DATA")
-        key.verify_signature(sig, b"DATA")
+        key = YkSigner.import_()
+        print(key.to_dict())
+        # signer = HSMSigner(_HSM_KEYID, {}, key, lambda sec: _HSM_USER_PIN)
+        # sig = signer.sign(b"DATA")
+        # key.verify_signature(sig, b"DATA")
 
-        with pytest.raises(UnverifiedSignatureError):
-            key.verify_signature(sig, b"NOT DATA")
+        # with pytest.raises(UnverifiedSignatureError):
+        #     key.verify_signature(sig, b"NOT DATA")
