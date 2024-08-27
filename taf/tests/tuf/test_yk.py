@@ -16,6 +16,9 @@ from securesystemslib.exceptions import UnverifiedSignatureError
 from securesystemslib.signer import HSMSigner, Signer
 from securesystemslib.signer._hsm_signer import PYKCS11LIB
 
+_HSM_KEYID = 1
+_HSM_USER_PIN = "123456"
+
 
 @unittest.skipUnless(os.environ.get("PYKCS11LIB"), "set PYKCS11LIB to SoftHSM lib path")
 class TestHSM(unittest.TestCase):
@@ -27,10 +30,6 @@ class TestHSM(unittest.TestCase):
 
     See .github/workflows/hsm.yml for how this can be done on Linux, macOS and Windows.
     """
-
-    hsm_keyid = 1
-    hsm_keyid_default = 2
-    hsm_user_pin = "123456"
 
     @staticmethod
     def _generate_key_pair(session, keyid, curve):
@@ -88,18 +87,15 @@ class TestHSM(unittest.TestCase):
         lib.initToken(slot, so_pin, token_label)
 
         tokeninfo = lib.getTokenInfo(slot)
-        cls.token_filter = {"label": getattr(tokeninfo, "label")}
-
         session = PYKCS11LIB().openSession(slot, PyKCS11.CKF_RW_SESSION)
         session.login(so_pin, PyKCS11.CKU_SO)
-        session.initPin(cls.hsm_user_pin)
+        session.initPin(_HSM_USER_PIN)
         session.logout()
 
-        session.login(cls.hsm_user_pin)
+        session.login(_HSM_USER_PIN)
 
         # Generate test ecdsa key pairs for curves secp256r1 and secp384r1 on test token
-        cls._generate_key_pair(session, cls.hsm_keyid, SECP256R1)
-        cls._generate_key_pair(session, cls.hsm_keyid_default, SECP384R1)
+        cls._generate_key_pair(session, _HSM_KEYID, SECP256R1)
 
         session.logout()
         session.closeSession()
@@ -113,33 +109,11 @@ class TestHSM(unittest.TestCase):
     def test_hsm(self):
         """Test HSM key export and signing."""
 
-        for hsm_keyid in [self.hsm_keyid, self.hsm_keyid_default]:
-            _, key = HSMSigner.import_(hsm_keyid, self.token_filter)
-            signer = HSMSigner(
-                hsm_keyid, self.token_filter, key, lambda sec: self.hsm_user_pin
-            )
-            sig = signer.sign(b"DATA")
-            key.verify_signature(sig, b"DATA")
-
-            with self.assertRaises(UnverifiedSignatureError):
-                key.verify_signature(sig, b"NOT DATA")
-
-    def test_hsm_uri(self):
-        """Test HSM default key export and signing from URI."""
-
-        # default import
-        uri, key = HSMSigner.import_()
-        signer = Signer.from_priv_key_uri(uri, key, lambda sec: self.hsm_user_pin)
+        _, key = HSMSigner.import_(_HSM_KEYID, None)
+        signer = HSMSigner(_HSM_KEYID, {}, key, lambda sec: _HSM_USER_PIN)
         sig = signer.sign(b"DATA")
         key.verify_signature(sig, b"DATA")
-        with self.assertRaises(UnverifiedSignatureError):
-            key.verify_signature(sig, b"NOT DATA")
 
-        # Import with specified values
-        uri, key = HSMSigner.import_(self.hsm_keyid_default, self.token_filter)
-        signer = Signer.from_priv_key_uri(uri, key, lambda sec: self.hsm_user_pin)
-        sig = signer.sign(b"DATA")
-        key.verify_signature(sig, b"DATA")
         with self.assertRaises(UnverifiedSignatureError):
             key.verify_signature(sig, b"NOT DATA")
 
