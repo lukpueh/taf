@@ -7,7 +7,6 @@ from typing import Optional
 
 from pathlib import Path
 from securesystemslib.signer import (
-    Key,
     SSlibKey,
     CryptoSigner,
     Signer,
@@ -87,19 +86,40 @@ def load_signer_from_file(path: Path, password: Optional[str]) -> CryptoSigner:
 
 
 class YkSigner(Signer):
+    """Signer implementation for Yubikeys.
+
+    Provides a minimal compatibility layer over `taf.yubikey` module functions
+    for use with MetadataRepository.
+
+    Attrs:
+        public_key: An SSlibkey, whose keyid and signing scheme are the single
+                of truth for creating signatures.
+        pin_handler: A function, which is called in `sign` and expected to
+                return the Yubikey pin.
+    """
+
     _SECRET_PROMPT = "pin"
 
-    def __init__(self, public_key: Key, pin_handler: SecretsHandler):
+    def __init__(self, public_key: SSlibKey, pin_handler: SecretsHandler):
 
         self._public_key = public_key
-        self.pin_handler = pin_handler
+        self._pin_handler = pin_handler
 
     @property
-    def public_key(self) -> Key:
+    def public_key(self) -> SSlibKey:
         return self._public_key
 
     @classmethod
     def import_(cls) -> SSlibKey:
+        """Import rsa public key from Yubikey.
+
+        * Assigns default signing scheme: "rsa-pkcs1v15-sha256"
+        * Raises ValueError, if key on Yubikey is not an rsa key.
+
+        TODO: Consider returning priv key uri along with public key.
+        See e.g. `self.from_priv_key_uri` and other `import_` methods on
+        securesystemslib signers, e.g. `HSMSigner.import_`.
+        """
         pem = export_piv_pub_key()
         # FIXME: unecessary pem serialization->deserialization detour:
         # export could return pyca/crypto pub object right away
@@ -107,8 +127,8 @@ class YkSigner(Signer):
         return _from_crypto(pub)
 
     def sign(self, payload: bytes) -> Signature:
-        pin = self.pin_handler(self._SECRET_PROMPT)
-        # FIXME: RuntimeError (generator didn't yield) in _yk_piv_ctrl, if keys match
+        pin = self._pin_handler(self._SECRET_PROMPT)
+        # FIXME: cannot match public key - openlawlibrary/taf#515
         # sig = sign_piv_rsa_pkcs1v15(payload, pin, self.public_key.keyval["public"])
         sig = sign_piv_rsa_pkcs1v15(payload, pin)
         return Signature(self.public_key.keyid, sig.hex())
@@ -117,9 +137,10 @@ class YkSigner(Signer):
     def from_priv_key_uri(
         cls,
         priv_key_uri: str,
-        public_key: Key,
+        public_key: SSlibKey,
         secrets_handler: Optional[SecretsHandler] = None,
     ) -> "Signer":
-        # See https://python-securesystemslib.readthedocs.io/en/latest/signer.html
-        # for from_priv_key_uri usage.
+        # TODO: Implement this to better separate public key management
+        # (e.g. tuf delegation) and signer configuration from the signing. See
+        # https://python-securesystemslib.readthedocs.io/en/latest/signer.html
         raise NotImplementedError
