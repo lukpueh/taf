@@ -23,9 +23,7 @@ from cryptography.hazmat.primitives.serialization import (
 )
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 
-from ykman.piv import SLOT
-
-from taf.yubikey import _yk_piv_ctrl, sign_piv_rsa_pkcs1v15
+from taf.yubikey import export_piv_pub_key, sign_piv_rsa_pkcs1v15
 
 
 def _get_legacy_keyid(key: SSlibKey) -> str:
@@ -89,6 +87,8 @@ def load_signer_from_file(path: Path, password: Optional[str]) -> CryptoSigner:
 
 
 class YkSigner(Signer):
+    _SECRET_PROMPT = "pin"
+
     def __init__(self, public_key: Key, pin_handler: SecretsHandler):
 
         self._public_key = public_key
@@ -100,15 +100,17 @@ class YkSigner(Signer):
 
     @classmethod
     def import_(cls) -> SSlibKey:
-        with _yk_piv_ctrl() as (ctrl, _):
-            x509 = ctrl.get_certificate(SLOT.SIGNATURE)
-
-        pub = x509.public_key()
+        pem = export_piv_pub_key()
+        # FIXME: unecessary pem serialization->deserialization detour:
+        # export could return pyca/crypto pub object right away
+        pub = load_pem_public_key(pem)
         return _from_crypto(pub)
 
     def sign(self, payload: bytes) -> Signature:
-        pin = self.pin_handler()
-        sig = sign_piv_rsa_pkcs1v15(payload, pin, self.public_key.keyval["public"])
+        pin = self.pin_handler(self._SECRET_PROMPT)
+        # FIXME: RuntimeError (generator didn't yield) in _yk_piv_ctrl, if keys match
+        # sig = sign_piv_rsa_pkcs1v15(payload, pin, self.public_key.keyval["public"])
+        sig = sign_piv_rsa_pkcs1v15(payload, pin)
         return Signature(self.public_key.keyid, sig.hex())
 
     @classmethod
@@ -118,4 +120,6 @@ class YkSigner(Signer):
         public_key: Key,
         secrets_handler: Optional[SecretsHandler] = None,
     ) -> "Signer":
-        raise NotImplementedError()
+        # See https://python-securesystemslib.readthedocs.io/en/latest/signer.html
+        # for from_priv_key_uri usage.
+        raise NotImplementedError
